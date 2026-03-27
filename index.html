@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word Search – Ocean Breeze</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { quicksand: ['Quicksand', 'sans-serif'] }
+        }
+      }
+    };
+  </script>
+  <style>
+    * { font-family: 'Quicksand', sans-serif; box-sizing: border-box; }
+    body {
+      background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 40%, #e0f7fa 100%);
+      min-height: 100vh;
+    }
+    .glass {
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.7);
+    }
+    canvas { touch-action: none; display: block; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      top: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease;
+      opacity: 0;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Progress bar */
+    .progress-inner {
+      transition: width 0.5s ease;
+    }
+
+    /* Word list item */
+    .word-item.found {
+      text-decoration: line-through;
+      opacity: 0.55;
+      color: #64748b;
+    }
+
+    /* Ensure hidden class works even without Tailwind CDN */
+    .hidden { display: none !important; }
+
+    /* Coin bounce */
+    @keyframes coinBounce {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.35); }
+      100% { transform: scale(1); }
+    }
+    .coin-bounce { animation: coinBounce 0.4s ease; }
+  </style>
+</head>
+<body class="text-slate-700">
+
+  <!-- HEADER -->
+  <header class="glass shadow-md sticky top-0 z-50 px-4 py-3">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center gap-2">
+      <div class="flex items-center gap-2 flex-1 min-w-0">
+        <span class="text-2xl">🌊</span>
+        <div class="min-w-0">
+          <h1 class="text-lg sm:text-xl font-bold text-sky-700 leading-tight truncate">Ocean Breeze Word Search</h1>
+          <p class="text-xs text-slate-500 hidden sm:block">Find all 15 words hidden in the grid!</p>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="flex-1 max-w-xs">
+        <div class="flex justify-between text-xs text-slate-500 mb-1">
+          <span id="progress-label">0 / 15 words</span>
+          <span id="mastery-label">Mastery: 0 / 100</span>
+        </div>
+        <div class="h-2.5 rounded-full bg-sky-100 overflow-hidden">
+          <div id="progress-bar" class="progress-inner h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-400" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Coins -->
+      <div class="flex items-center gap-1.5 glass rounded-full px-4 py-1.5 text-amber-500 font-bold text-sm shadow-sm">
+        <span id="coin-icon" class="text-lg">🪙</span>
+        <span id="coin-count">0</span>
+        <span class="text-xs font-medium text-amber-400">coins</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
+    <div class="flex flex-col lg:flex-row gap-4 items-start">
+
+      <!-- Canvas Column -->
+      <div class="w-full lg:flex-1">
+        <div class="glass rounded-2xl shadow-lg p-3 sm:p-4 flex flex-col items-center gap-3">
+          <canvas id="grid-canvas"></canvas>
+          <button id="new-game-btn"
+            class="mt-1 px-6 py-2 bg-sky-500 hover:bg-sky-600 active:scale-95 text-white font-semibold rounded-full shadow transition text-sm">
+            🔄 New Game
+          </button>
+        </div>
+      </div>
+
+      <!-- Word List Column -->
+      <div class="w-full lg:w-60 xl:w-72">
+        <div class="glass rounded-2xl shadow-lg p-4">
+          <h2 class="font-bold text-sky-700 text-base mb-3 flex items-center gap-2">
+            <span>📋</span> Words to Find
+          </h2>
+          <ul id="word-list" class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-medium"></ul>
+        </div>
+
+        <!-- Stats card -->
+        <div class="glass rounded-2xl shadow-lg p-4 mt-4">
+          <h2 class="font-bold text-sky-700 text-base mb-3 flex items-center gap-2">
+            <span>🏆</span> My Stats
+          </h2>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Words Found</span><span id="stat-found" class="font-bold text-sky-600">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Total Coins</span><span id="stat-coins" class="font-bold text-amber-500">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Games Played</span><span id="stat-games" class="font-bold text-emerald-600">0</span></div>
+            <div class="mt-3">
+              <div class="flex justify-between text-xs text-slate-500 mb-1">
+                <span>Mastery Progress</span>
+                <span id="mastery-pct">0%</span>
+              </div>
+              <div class="h-2 rounded-full bg-sky-100 overflow-hidden">
+                <div id="mastery-bar" class="progress-inner h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-400" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- TOAST -->
+  <div id="toast" class="glass rounded-2xl px-6 py-3 shadow-xl flex items-center gap-3 text-base font-semibold text-sky-800">
+    <span id="toast-emoji" class="text-2xl"></span>
+    <span id="toast-text"></span>
+  </div>
+
+  <!-- GAME COMPLETE OVERLAY -->
+  <div id="complete-overlay"
+    class="fixed inset-0 flex items-center justify-center z-50 bg-sky-900/30 backdrop-blur-sm hidden">
+    <div class="glass rounded-3xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+      <div class="text-5xl mb-3">🎉</div>
+      <h2 class="text-2xl font-bold text-sky-700 mb-1">Brilliant!</h2>
+      <p class="text-slate-600 mb-2">You found all 15 words!</p>
+      <p class="text-amber-500 font-bold text-lg mb-5" id="complete-coins">+150 coins earned</p>
+      <button id="overlay-new-game"
+        class="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full shadow-md transition active:scale-95">
+        Play Again 🌊
+      </button>
+    </div>
+  </div>
+
+<script>
+// ─── MASTER WORDS ────────────────────────────────────────────────────────────
+const MASTER_WORDS = [
+  "APPLE","BRAVE","CLOUD","DANCE","EARTH","FLAME","GRACE","HEART","IVORY","JOKER",
+  "KARMA","LEMON","MANGO","NOBLE","OCEAN","PIANO","QUEEN","RIVER","SMILE","TIGER",
+  "UMBRA","VOICE","WATER","XENON","YACHT","ZEBRA","ANGEL","BEACH","CHAIR","DREAM",
+  "EAGLE","FROST","GLOBE","HONEY","IMAGE","JEWEL","KNIFE","LIGHT","MAPLE","NIGHT",
+  "OLIVE","PEARL","QUEST","ROUND","SNAKE","TRAIN","UNDER","VIVID","WHEEL","XEROX",
+  "YOUTH","ZONES","ABBEY","BLOOM","CRISP","DAISY","ELBOW","FAIRY","GIANT","HAPPY",
+  "INLET","JUMPY","KINKY","LUNAR","MOUSE","NOVEL","OASIS","PLUME","QUIRK","RADAR",
+  "STORM","TOAST","ULTRA","VAPOR","WITCH","EXTRA","YIELD","ZENITH","AMBER","BLAZE",
+  "CANDY","DEPOT","ENJOY","FERRY","GREET","HONOR","INPUT","JAZZY","KITTY","LINEN",
+  "MERCY","NERVE","ORBIT","PROXY","QUOTA","RADIO","SHADE","TRUNK","UPPER","VILLA"
+];
+
+// ─── TOAST MESSAGES ───────────────────────────────────────────────────────────
+const TOASTS = [
+  { text: "Amazing!", emoji: "🌟" },
+  { text: "Smart!", emoji: "🧠" },
+  { text: "Excellent!", emoji: "✨" },
+  { text: "Brilliant!", emoji: "💡" },
+  { text: "Fantastic!", emoji: "🎉" },
+  { text: "Great job!", emoji: "👏" },
+  { text: "Well done!", emoji: "🏆" },
+  { text: "Superb!", emoji: "🚀" },
+  { text: "Keep it up!", emoji: "💪" },
+  { text: "Wonderful!", emoji: "🌈" },
+];
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const GRID_SIZE    = 14;
+const WORDS_PER_GAME = 15;
+const COINS_PER_WORD = 10;
+const CELL_COLORS  = [
+  "#bfdbfe","#a5f3fc","#99f6e4","#d0f4ff",
+  "#c7d2fe","#fce7f3","#fef9c3","#d9f99d"
+];
+
+// Directions: [dr, dc]
+const DIRECTIONS = [
+  [0,1],[0,-1],[1,0],[-1,0],
+  [1,1],[1,-1],[-1,1],[-1,-1]
+];
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let grid       = [];      // 2D array of chars
+let sessionWords = [];    // 15 words for this game
+let placedWords  = [];    // [{word, cells:[{r,c}], color}]
+let foundWords   = new Set();
+let coins = 0;
+let isDragging = false;
+let dragStart  = null;    // {r,c}
+let dragEnd    = null;    // {r,c}
+
+// ─── LOCALSTORAGE ─────────────────────────────────────────────────────────────
+function loadStats() {
+  try {
+    return JSON.parse(localStorage.getItem('wsStats') || '{"totalCoins":0,"gamesPlayed":0,"masteredWords":[]}');
+  } catch (_) {
+    return { totalCoins: 0, gamesPlayed: 0, masteredWords: [] };
+  }
+}
+function saveStats(st) {
+  localStorage.setItem('wsStats', JSON.stringify(st));
+}
+
+// ─── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('grid-canvas');
+const ctx    = canvas.getContext('2d');
+let CELL;
+
+function resizeCanvas() {
+  const container = canvas.parentElement;
+  const maxW = container.clientWidth - 24; // padding
+  const size = Math.min(maxW, 560);
+  CELL = Math.floor(size / GRID_SIZE);
+  canvas.width  = CELL * GRID_SIZE;
+  canvas.height = CELL * GRID_SIZE;
+  render();
+}
+
+// ─── GRID GENERATION ─────────────────────────────────────────────────────────
+function generateGrid() {
+  // Init empty grid
+  grid = Array.from({length: GRID_SIZE}, () => Array(GRID_SIZE).fill(''));
+  placedWords = [];
+
+  // Fisher-Yates shuffle for uniform randomness
+  const pool = [...MASTER_WORDS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  sessionWords = pool.slice(0, WORDS_PER_GAME);
+
+  // Place each word
+  sessionWords.forEach((word, idx) => {
+    placeWord(word, CELL_COLORS[idx % CELL_COLORS.length]);
+  });
+
+  // Fill blanks with random letters
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      if (!grid[r][c]) grid[r][c] = alpha[Math.floor(Math.random() * 26)];
+    }
+  }
+}
+
+function placeWord(word, color) {
+  const maxAttempts = 200;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const [dr, dc] = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+    const r0 = Math.floor(Math.random() * GRID_SIZE);
+    const c0 = Math.floor(Math.random() * GRID_SIZE);
+
+    // Check if word fits
+    const cells = [];
+    let ok = true;
+    for (let i = 0; i < word.length; i++) {
+      const r = r0 + dr * i;
+      const c = c0 + dc * i;
+      if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) { ok = false; break; }
+      if (grid[r][c] && grid[r][c] !== word[i]) { ok = false; break; }
+      cells.push({r, c});
+    }
+    if (ok) {
+      cells.forEach(({r,c}, i) => { grid[r][c] = word[i]; });
+      placedWords.push({word, cells, color});
+      return true;
+    }
+  }
+  // Could not place – put it anyway in the first available horizontal span
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c0 = 0; c0 <= GRID_SIZE - word.length; c0++) {
+      const cells = [];
+      let ok = true;
+      for (let i = 0; i < word.length; i++) {
+        const c = c0 + i;
+        if (grid[r][c] && grid[r][c] !== word[i]) { ok = false; break; }
+        cells.push({r, c});
+      }
+      if (ok) {
+        cells.forEach(({r,c},i) => { grid[r][c] = word[i]; });
+        placedWords.push({word, cells, color});
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  if (!CELL) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.fillStyle = 'rgba(224,242,254,0.5)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(186,230,253,0.7)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= GRID_SIZE; i++) {
+    ctx.beginPath(); ctx.moveTo(i*CELL, 0); ctx.lineTo(i*CELL, canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i*CELL); ctx.lineTo(canvas.width, i*CELL); ctx.stroke();
+  }
+
+  // Draw found word highlights (permanent)
+  placedWords.forEach(pw => {
+    if (!foundWords.has(pw.word)) return;
+    drawHighlight(pw.cells, pw.color, 0.55);
+  });
+
+  // Draw current drag highlight
+  if (isDragging && dragStart && dragEnd) {
+    const cells = getLineCells(dragStart, dragEnd);
+    if (cells.length > 0) {
+      drawHighlight(cells, '#7dd3fc', 0.45);
+    }
+  }
+
+  // Draw letters
+  const fontSize = Math.max(10, Math.floor(CELL * 0.52));
+  ctx.font = `600 ${fontSize}px Quicksand, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const cx = c * CELL + CELL / 2;
+      const cy = r * CELL + CELL / 2;
+
+      // Check if cell is part of a found word → colour the letter
+      let letterColor = '#334155';
+      for (const pw of placedWords) {
+        if (foundWords.has(pw.word) && pw.cells.some(cl => cl.r === r && cl.c === c)) {
+          letterColor = '#0f4c75';
+          break;
+        }
+      }
+      ctx.fillStyle = letterColor;
+      ctx.fillText(grid[r]?.[c] ?? '', cx, cy);
+    }
+  }
+}
+
+function drawHighlight(cells, color, alpha) {
+  if (!cells.length) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+
+  const R = CELL * 0.44;
+
+  if (cells.length === 1) {
+    const {r,c} = cells[0];
+    const cx = c*CELL + CELL/2, cy = r*CELL + CELL/2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI*2);
+    ctx.fill();
+  } else {
+    // Draw a capsule along the line
+    const first = cells[0], last = cells[cells.length-1];
+    const x1 = first.c*CELL + CELL/2, y1 = first.r*CELL + CELL/2;
+    const x2 = last.c*CELL  + CELL/2, y2 = last.r*CELL  + CELL/2;
+
+    const dx = x2-x1, dy = y2-y1;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx);
+    const nx = -dy/len * R, ny = dx/len * R;
+
+    ctx.beginPath();
+    ctx.moveTo(x1 + nx, y1 + ny);
+    ctx.lineTo(x2 + nx, y2 + ny);
+    ctx.arc(x2, y2, R, angle - Math.PI/2, angle + Math.PI/2);
+    ctx.lineTo(x1 - nx, y1 - ny);
+    ctx.arc(x1, y1, R, angle + Math.PI/2, angle - Math.PI/2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ─── CELL SNAPPING ────────────────────────────────────────────────────────────
+function pixelToCell(x, y) {
+  return {
+    r: Math.floor(y / CELL),
+    c: Math.floor(x / CELL)
+  };
+}
+
+/**
+ * Return all cells on the snapped line from start to end.
+ * Snaps to the nearest valid direction (horizontal, vertical, diagonal).
+ */
+function getLineCells(start, end) {
+  if (!start || !end) return [];
+  let dr = end.r - start.r;
+  let dc = end.c - start.c;
+
+  if (dr === 0 && dc === 0) return [start];
+
+  const absDr = Math.abs(dr), absDc = Math.abs(dc);
+
+  // Snap to 8 directions
+  let dirR, dirC, steps;
+  if (absDr === 0) { dirR=0; dirC = dc>0?1:-1; steps=absDc; }
+  else if (absDc === 0) { dirR = dr>0?1:-1; dirC=0; steps=absDr; }
+  else if (absDr === absDc) { dirR=dr>0?1:-1; dirC=dc>0?1:-1; steps=absDr; }
+  else {
+    // Find closest direction
+    const angle = Math.atan2(dr, dc);
+    const snapAngles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4,
+                        Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
+    const dirVectors = [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
+    let best = 0, bestDiff = Infinity;
+    snapAngles.forEach((a,i) => {
+      let diff = Math.abs(angle - a);
+      if (diff > Math.PI) diff = 2*Math.PI - diff;
+      if (diff < bestDiff) { bestDiff = diff; best = i; }
+    });
+    [dirR, dirC] = dirVectors[best];
+    steps = Math.max(absDr, absDc);
+  }
+
+  const cells = [];
+  for (let i = 0; i <= steps; i++) {
+    const r = start.r + dirR*i;
+    const c = start.c + dirC*i;
+    if (r>=0 && r<GRID_SIZE && c>=0 && c<GRID_SIZE) cells.push({r,c});
+  }
+  return cells;
+}
+
+// ─── WORD CHECK ───────────────────────────────────────────────────────────────
+function checkSelection(cells) {
+  if (cells.length < 2) return;
+  const selected = cells.map(({r,c}) => grid[r][c]).join('');
+  const reversed = selected.split('').reverse().join('');
+
+  for (const pw of placedWords) {
+    if (foundWords.has(pw.word)) continue;
+    if (pw.word === selected || pw.word === reversed) {
+      foundWords.add(pw.word);
+      onWordFound(pw.word);
+      return;
+    }
+  }
+}
+
+function onWordFound(word) {
+  // Coins
+  coins += COINS_PER_WORD;
+  updateCoins();
+
+  // Toast
+  const t = TOASTS[Math.floor(Math.random() * TOASTS.length)];
+  showToast(t.emoji, `${t.text} You found "${word}"!`);
+
+  // Update word list
+  document.querySelectorAll('.word-item').forEach(el => {
+    if (el.dataset.word === word) el.classList.add('found');
+  });
+
+  // Update progress
+  updateProgress();
+
+  // Update mastery
+  const stats = loadStats();
+  if (!stats.masteredWords.includes(word)) {
+    stats.masteredWords.push(word);
+  }
+  stats.totalCoins = (stats.totalCoins||0) + COINS_PER_WORD;
+  saveStats(stats);
+  updateMastery(stats);
+
+  render();
+
+  // Check complete
+  if (foundWords.size === sessionWords.length) {
+    setTimeout(showComplete, 600);
+  }
+}
+
+// ─── UI UPDATES ───────────────────────────────────────────────────────────────
+function updateCoins() {
+  const el = document.getElementById('coin-count');
+  el.textContent = coins;
+  const icon = document.getElementById('coin-icon');
+  icon.classList.remove('coin-bounce');
+  void icon.offsetWidth; // Force reflow to restart CSS animation
+  icon.classList.add('coin-bounce');
+  document.getElementById('stat-coins').textContent = coins;
+}
+
+function updateProgress() {
+  const found = foundWords.size;
+  const total = sessionWords.length;
+  const pct = Math.round(found/total*100);
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = `${found} / ${total} words`;
+  document.getElementById('stat-found').textContent = found;
+}
+
+function updateMastery(stats) {
+  const count = (stats.masteredWords||[]).length;
+  const pct = Math.round(count/MASTER_WORDS.length*100);
+  document.getElementById('mastery-label').textContent = `Mastery: ${count} / ${MASTER_WORDS.length}`;
+  document.getElementById('mastery-bar').style.width = pct + '%';
+  document.getElementById('mastery-pct').textContent = pct + '%';
+}
+
+function buildWordList() {
+  const ul = document.getElementById('word-list');
+  ul.innerHTML = '';
+  sessionWords.forEach(w => {
+    const li = document.createElement('li');
+    li.textContent = w.charAt(0) + w.slice(1).toLowerCase();
+    li.dataset.word = w;
+    li.className = 'word-item transition-all duration-300' + (foundWords.has(w) ? ' found' : '');
+    ul.appendChild(li);
+  });
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(emoji, text) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-emoji').textContent = emoji;
+  document.getElementById('toast-text').textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
+// ─── COMPLETE ─────────────────────────────────────────────────────────────────
+function showComplete() {
+  document.getElementById('complete-coins').textContent = `+${sessionWords.length * COINS_PER_WORD} coins earned this game!`;
+  document.getElementById('complete-overlay').classList.remove('hidden');
+}
+
+// ─── NEW GAME ─────────────────────────────────────────────────────────────────
+function newGame() {
+  document.getElementById('complete-overlay').classList.add('hidden');
+  foundWords.clear();
+  coins = 0;
+
+  const stats = loadStats();
+  stats.gamesPlayed = (stats.gamesPlayed || 0) + 1;
+  saveStats(stats);
+  document.getElementById('stat-games').textContent = stats.gamesPlayed;
+  updateMastery(stats);
+
+  generateGrid();
+  buildWordList();
+  updateCoins();
+  updateProgress();
+  render();
+}
+
+// ─── INPUT HELPERS ───────────────────────────────────────────────────────────
+function getEventPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let clientX, clientY;
+  if (e.touches && e.touches.length) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else if (e.changedTouches && e.changedTouches.length) {
+    clientX = e.changedTouches[0].clientX;
+    clientY = e.changedTouches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top)  * scaleY
+  };
+}
+
+// ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  const {x,y} = getEventPos(e);
+  dragStart = pixelToCell(x,y);
+  dragEnd   = dragStart;
+  isDragging = true;
+  render();
+});
+canvas.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const {x,y} = getEventPos(e);
+  dragEnd = pixelToCell(x,y);
+  render();
+});
+canvas.addEventListener('mouseup', e => {
+  if (!isDragging) return;
+  const {x,y} = getEventPos(e);
+  dragEnd = pixelToCell(x,y);
+  const cells = getLineCells(dragStart, dragEnd);
+  checkSelection(cells);
+  isDragging = false;
+  dragStart = null; dragEnd = null;
+  render();
+});
+canvas.addEventListener('mouseleave', e => {
+  if (isDragging) {
+    const cells = getLineCells(dragStart, dragEnd);
+    checkSelection(cells);
+    isDragging = false;
+    dragStart = null; dragEnd = null;
+    render();
+  }
+});
+
+// ─── TOUCH EVENTS ────────────────────────────────────────────────────────────
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const {x,y} = getEventPos(e);
+  dragStart = pixelToCell(x,y);
+  dragEnd   = dragStart;
+  isDragging = true;
+  render();
+}, {passive:false});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!isDragging) return;
+  const {x,y} = getEventPos(e);
+  dragEnd = pixelToCell(x,y);
+  render();
+}, {passive:false});
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!isDragging) return;
+  const {x,y} = getEventPos(e);
+  dragEnd = pixelToCell(x,y);
+  const cells = getLineCells(dragStart, dragEnd);
+  checkSelection(cells);
+  isDragging = false;
+  dragStart = null; dragEnd = null;
+  render();
+}, {passive:false});
+
+// ─── BUTTONS ─────────────────────────────────────────────────────────────────
+document.getElementById('new-game-btn').addEventListener('click', newGame);
+document.getElementById('overlay-new-game').addEventListener('click', newGame);
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+(function init() {
+  const stats = loadStats();
+  document.getElementById('stat-games').textContent = stats.gamesPlayed || 0;
+  updateMastery(stats);
+  resizeCanvas();
+  newGame();
+})();
+</script>
+</body>
+</html>
